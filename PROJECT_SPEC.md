@@ -77,50 +77,56 @@ This is the reference style, matching the attached PrimeClip sample frame. The r
 | Word reveal         | Words **accumulate as spoken**: a word is visible only from its own start time; already-shown words stay until the segment ends (§5.3.1) |
 | Words per line      | 2–3 base words per line (target ~18 chars/line); never overflow safe area |
 | Wrapping            | Break on word boundaries only; balance line lengths               |
-| Line spacing        | Tight: 1.05 line-height; the emphasis line **overlaps** the lines above and below it by ~18% of the emphasis font size and stacks on top of them |
+| Line spacing        | Tight: 1.05 line-height; the highlight line **overlaps** the lines above and below it by ~14% of the highlight font size and **stacks on top of them** (a raised z-index guarantees the line below never covers its descenders) |
 
-### 5.2 Base (non-emphasized) text
+### 5.2 Text roles
+
+All caption text is **Inter**. There are exactly three roles; sizes are px on a **1080-px-tall reference frame** and scale proportionally to the rendered frame height (see §5.4), so a caption looks identical at any output resolution.
+
+| Role          | Font / weight / style | Size (px @1080) | Case            | Fill      | Depth |
+| ------------- | --------------------- | --------------- | --------------- | --------- | ----- |
+| **Thin**      | Inter 100             | 50              | As transcribed  | `#FFFFFF` | Soft black shadow: `rgba(0,0,0,0.7)`, offset down ~5% of font size, blur ~15% |
+| **Bold**      | Inter 800             | 60              | **UPPERCASE**   | `#FFFFFF` | Crisp 3D extrude: hard (un-blurred) `rgba(0,0,0,0.85)` copies stepped straight **down** in 3 layers to ~5% of font size — rises from the bottom, not blurry |
+| **Highlight** | Inter 700, **italic** | 100             | As transcribed  | Selectable highlight color (§5.6), default `#F6FF4D` | Vertical depth (below) — see §5.3 |
+
+Non-highlight spoken words render **Thin**. **Bold** is available in the style system for word-level emphasis; it is not auto-assigned by the current selector. The one "pop" word per segment renders **Highlight** (§5.3).
 
 | Property       | Value                                                          |
 | -------------- | -------------------------------------------------------------- |
-| Font           | **Montserrat**, weight 800 (Inter, Geist, then system sans as fallbacks) |
-| Case           | As transcribed (sentence case); no forced uppercase            |
-| Fill color     | `#FFFFFF`                                                      |
 | Stroke/contour | **None** — legibility comes from the shadow                    |
-| Shadow         | Soft black: `rgba(0,0,0,0.7)`, offset down ~5% of font size, blur ~15% of font size |
 | Backdrop scrim | While a caption is visible: a full-width black gradient behind the caption edge of the frame, from `rgba(0,0,0,0.45)` at the frame edge fading to transparent over 28% of frame height; follows the caption's entrance fade; flips to the top edge for `position: top`, omitted for `center` |
-| Size           | ~3.6% of frame height at the `md` preset (see 5.4)             |
 
-### 5.3 Emphasis word (the "pop" word)
+### 5.3 Highlight word (the "pop" word)
 
-The currently spoken word — or a word the user manually marks — is emphasized, as in the reference frame where "tomorrow" pops below the white line:
+The currently spoken word — or a word the user manually marks — is the highlight, as in the reference frame where the key word pops below the white line:
 
 | Property   | Value                                                             |
 | ---------- | ----------------------------------------------------------------- |
-| Fill color | Highlight color, default `#D3DB42` (yellow-green); user-selectable from a fixed palette (lime `#D3DB42`, green `#4ADE80`, red `#F87171`, blue `#60A5FA`) |
-| Weight     | 800, **italic**                                                   |
-| Scale      | 1.7× the base font size                                           |
-| Placement  | **Always alone on its own line**, stacked between the preceding words (wrapped above) and the following words (wrapped below) |
+| Fill color | Highlight color, default `#F6FF4D` (lime); user-selectable (§5.6) |
+| Font       | Inter, weight 700, **italic**, 100px @1080 (§5.2)                 |
+| Case       | Never uppercase                                                  |
+| Placement  | **Always alone on its own line**, stacked between the preceding words (wrapped above) and the following words (wrapped below), painted **on top** |
 | Selection  | Exactly **one word per segment**, fixed for the segment's whole visible duration: a manually emphasized word wins; otherwise the longest word (ties → the later word) |
-| Shadow     | Same soft black shadow as base text (scales with its larger size) |
-| 3D layer   | Subtle extrusion: hard (un-blurred) dark copies `rgba(0,0,0,0.85)` stepped down-right in 3 layers to a total offset of 6% of the emphasis font size, painted under the fill |
+| Depth      | Subtle black depth that rises from the bottom (not a glow): hard (un-blurred) `rgba(0,0,0,0.8)` copies stepped straight **down** in 3 layers to ~5% of the highlight font size, then a soft `rgba(0,0,0,0.55)` shadow offset down ~6%, blur ~5% |
 
 ### 5.3.1 Word entrance animation
 
 | Property        | Value                                                        |
 | --------------- | ------------------------------------------------------------ |
 | Reveal          | Each word becomes visible at its own spoken start time; earlier words remain on screen for the rest of the segment |
-| Base words      | Fade in (opacity 0→1) with blur (25%→0 of font size), ~180 ms, cubic ease-out, from the word's own start time |
-| Emphasis word   | Same fade+blur, **plus** rises from below: translateY from 50% of font size to its baseline, same duration/easing |
+| Thin words      | Fade in (opacity 0→1) with a strong blur (35%→0 of font size) that clears as it fades, ~450 ms, cubic ease-out, from the word's own start time |
+| Highlight word  | Slides up from ~28% of font size below its baseline with a gentle fade and a whisper of blur (8%→0), ~500 ms, cubic ease-out — elegant, not exaggerated |
 | Determinism     | Animation is a pure function of `t − word.start` so the browser preview and the server render are frame-identical |
 
 ### 5.4 Size presets
 
-| Preset | Base size (% of frame height) | Use                 |
-| ------ | ----------------------------- | ------------------- |
-| `sm`   | 3.0%                          | Dense speech        |
-| `md`   | 3.6%                          | Default             |
-| `lg`   | 4.8%                          | Punchy short-form   |
+Presets are a multiplier applied to **every** role's px size (§5.2). `md` is the authored reference; the effective size is `(rolePx / 1080) × presetScale × frameHeight`.
+
+| Preset | Scale | Use                 |
+| ------ | ----- | ------------------- |
+| `sm`   | 0.83  | Dense speech        |
+| `md`   | 1.00  | Default             |
+| `lg`   | 1.33  | Punchy short-form   |
 
 ### 5.5 Timing rules
 
@@ -133,6 +139,8 @@ The currently spoken word — or a word the user manually marks — is emphasize
 ### 5.6 Style parameters exposed to users
 
 Users may change only: position (`top`/`center`/`bottom`), highlight color (fixed palette), size preset (`sm`/`md`/`lg`), and per-word emphasis overrides. Everything else in §5 is fixed by the style system. This is what `CaptionStyle` in `src/lib/video/types.ts` parameterizes.
+
+The highlight color picker (shown before export) offers **Lime `#F6FF4D`**, **Orange `#FB923C`**, and **Blue `#60A5FA`**; green `#4ADE80` and red `#F87171` remain valid palette values for backward compatibility. The selected color drives both the live preview and the exported render from the same `CaptionStyle`, so there is no preview/export divergence.
 
 ## 6. UI/UX guidelines
 

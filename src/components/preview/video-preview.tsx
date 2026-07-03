@@ -20,7 +20,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { DEFAULT_CAPTION_STYLE } from "@/lib/captions/style";
+import { DEFAULT_CAPTION_STYLE, HIGHLIGHT_CHOICES } from "@/lib/captions/style";
+import { cn } from "@/lib/utils";
 import {
   ACCEPTED_VIDEO_MIME_TYPES,
   formatBytes,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/video/constants";
 import type {
   CaptionSegment,
+  CaptionStyle,
   RenderStatusResponse,
   TranscribeResponse,
 } from "@/lib/video/types";
@@ -92,6 +94,15 @@ export function VideoPreview() {
   const [exportState, setExportState] = React.useState<ExportState>({
     phase: "idle",
   });
+  const [highlightColor, setHighlightColor] = React.useState<string>(
+    DEFAULT_CAPTION_STYLE.highlightColor
+  );
+  // The single style object fed to BOTH the live preview and the export, so
+  // the two can never disagree (WYSIWYG parity).
+  const captionStyle = React.useMemo<CaptionStyle>(
+    () => ({ ...DEFAULT_CAPTION_STYLE, highlightColor }),
+    [highlightColor]
+  );
   const inputRef = React.useRef<HTMLInputElement>(null);
   const objectUrlRef = React.useRef<string | null>(null);
   const requestRef = React.useRef<XMLHttpRequest | null>(null);
@@ -165,7 +176,7 @@ export function VideoPreview() {
 
   /** Send the video + captions to POST /api/render and follow progress. */
   const startExport = React.useCallback(
-    (file: File, segments: CaptionSegment[]) => {
+    (file: File, segments: CaptionSegment[], style: CaptionStyle) => {
       abortExport();
       setExportState({ phase: "uploading", progress: 0 });
 
@@ -174,7 +185,7 @@ export function VideoPreview() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("segments", JSON.stringify(segments));
-      formData.append("style", JSON.stringify(DEFAULT_CAPTION_STYLE));
+      formData.append("style", JSON.stringify(style));
 
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
@@ -398,7 +409,7 @@ export function VideoPreview() {
                 inputProps={{
                   videoSrc: state.video.objectUrl,
                   segments,
-                  captionStyle: DEFAULT_CAPTION_STYLE,
+                  captionStyle,
                   loopCaptions: false,
                 }}
                 durationInFrames={Math.max(
@@ -467,6 +478,37 @@ export function VideoPreview() {
                 className="space-y-3 rounded-lg border p-4"
                 data-testid="export-panel"
               >
+                <div className="space-y-2" data-testid="highlight-color-picker">
+                  <p className="text-sm font-medium">Highlight color</p>
+                  <div
+                    className="flex items-center gap-2"
+                    role="radiogroup"
+                    aria-label="Highlight color"
+                  >
+                    {HIGHLIGHT_CHOICES.map((choice) => {
+                      const selected = highlightColor === choice.value;
+                      return (
+                        <button
+                          key={choice.name}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          aria-label={choice.label}
+                          title={choice.label}
+                          onClick={() => setHighlightColor(choice.value)}
+                          className={cn(
+                            "size-8 rounded-full border-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                            selected
+                              ? "border-foreground"
+                              : "border-transparent hover:border-muted-foreground/50"
+                          )}
+                          style={{ backgroundColor: choice.value }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {exportState.phase === "idle" && (
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm text-muted-foreground">
@@ -474,7 +516,11 @@ export function VideoPreview() {
                     </p>
                     <Button
                       onClick={() =>
-                        startExport(state.video.file, captions.segments)
+                        startExport(
+                          state.video.file,
+                          captions.segments,
+                          captionStyle
+                        )
                       }
                     >
                       <Download aria-hidden />
@@ -529,7 +575,11 @@ export function VideoPreview() {
                       variant="outline"
                       size="sm"
                       onClick={() =>
-                        startExport(state.video.file, captions.segments)
+                        startExport(
+                          state.video.file,
+                          captions.segments,
+                          captionStyle
+                        )
                       }
                     >
                       Retry export

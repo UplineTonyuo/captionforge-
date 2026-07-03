@@ -3,10 +3,11 @@ import { staticFile } from "remotion";
 
 /**
  * Registers the caption fonts (public/fonts/, OFL-licensed) for caption
- * text: Inter 800 (the §5.2 caption font) plus Geist as the fallback family.
- * Loading from staticFile makes the preview Player and the server-side
- * render resolve the exact same fonts, which the WYSIWYG guarantee depends
- * on (PROJECT_SPEC.md TR-3).
+ * text: the three Inter weights the §5.2 role system uses — Inter 100 (thin),
+ * Inter 800 (bold), Inter 700 italic (highlight) — plus Montserrat and Geist
+ * as fallbacks. Loading from staticFile makes the preview Player and the
+ * server-side render resolve the exact same fonts, which the WYSIWYG guarantee
+ * depends on (PROJECT_SPEC.md TR-3).
  */
 
 let loaded: Promise<void> | null = null;
@@ -32,6 +33,18 @@ export function ensureCaptionFontsLoaded(): Promise<void> {
       url: staticFile("fonts/Inter-800.woff2"),
       weight: "800",
       style: "normal",
+    }),
+    loadFont({
+      family: "Inter",
+      url: staticFile("fonts/Inter-100.woff2"),
+      weight: "100",
+      style: "normal",
+    }),
+    loadFont({
+      family: "Inter",
+      url: staticFile("fonts/Inter-700-Italic.woff2"),
+      weight: "700",
+      style: "italic",
     }),
     loadFont({
       family: "Geist",

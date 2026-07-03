@@ -1,18 +1,15 @@
 import * as React from "react";
 
 import {
-  BASE_FONT_SIZE_BY_PRESET,
   BASE_TEXT_COLOR,
+  CAPTION_FONT_FAMILY,
+  CAPTION_ROLES,
+  captionFontSize,
   DEFAULT_CAPTION_STYLE,
-  EMPHASIS_EXTRUDE,
-  EMPHASIS_ITALIC,
   EMPHASIS_OVERLAP_RATIO,
-  EMPHASIS_RISE_RATIO,
-  EMPHASIS_SCALE,
-  ENTRANCE_BLUR_RATIO,
-  ENTRANCE_SECONDS,
-  FONT_FAMILY,
-  FONT_WEIGHT,
+  HIGHLIGHT_ENTRANCE,
+  HIGHLIGHT_EXTRUDE,
+  HIGHLIGHT_SHADOW,
   LINE_HEIGHT,
   OUTLINE_COLOR,
   OUTLINE_RATIO,
@@ -20,6 +17,7 @@ import {
   SAFE_MARGIN_X,
   SCRIM,
   SHADOW,
+  THIN_ENTRANCE,
   WORD_GAP_RATIO,
 } from "@/lib/captions/style";
 import { getActiveSegment, pickEmphasisIndex } from "@/lib/captions/timing";
@@ -35,8 +33,8 @@ import type {
  *
  * Layout per §5.1/§5.3: stacked — the segment's words before the emphasis
  * word wrap above it, the emphasis word (manual override, else the longest
- * word) sits alone on its own line at 1.7× in italic and the highlight
- * color, and the following words wrap below. Words accumulate as spoken:
+ * word) sits alone on its own line in italic Inter 700 at the highlight size
+ * and the highlight color, and the following words wrap below. Words accumulate as spoken:
  * each becomes visible at its own start time and fades in with blur; the
  * emphasis word additionally rises from below (§5.3.1). Every animation is
  * a pure function of `t − word.start`, so the browser preview and the
@@ -56,9 +54,9 @@ export interface CaptionRendererProps {
   style?: CaptionStyle;
 }
 
-/** Cubic ease-out of a word's entrance at `elapsed` seconds after its start. */
-function entranceEase(elapsedSeconds: number): number {
-  const p = Math.min(1, Math.max(0, elapsedSeconds / ENTRANCE_SECONDS));
+/** Cubic ease-out of an entrance `elapsed` seconds in, over `durationSeconds`. */
+function entranceEase(elapsedSeconds: number, durationSeconds: number): number {
+  const p = Math.min(1, Math.max(0, elapsedSeconds / durationSeconds));
   return 1 - (1 - p) ** 3;
 }
 
@@ -72,16 +70,15 @@ export function CaptionRenderer({
   const segment = getActiveSegment(segments, currentTimeSeconds);
   if (!segment) return null;
 
-  const baseFontSize =
-    BASE_FONT_SIZE_BY_PRESET[style.sizePreset] * frameHeight;
+  const baseFontSize = captionFontSize("thin", style.sizePreset, frameHeight);
   const strokeWidth = 2 * OUTLINE_RATIO * baseFontSize;
   const shadow = `${SHADOW.offsetXRatio * baseFontSize}px ${
     SHADOW.offsetYRatio * baseFontSize
   }px ${SHADOW.blurRatio * baseFontSize}px ${SHADOW.color}`;
 
   const textBase: React.CSSProperties = {
-    fontFamily: FONT_FAMILY,
-    fontWeight: FONT_WEIGHT,
+    fontFamily: CAPTION_FONT_FAMILY,
+    fontWeight: CAPTION_ROLES.thin.weight,
     lineHeight: LINE_HEIGHT,
     ...(strokeWidth > 0
       ? {
@@ -110,7 +107,7 @@ export function CaptionRenderer({
     currentTimeSeconds >= word.startSeconds;
 
   const wordEntrance = (word: CaptionWord) =>
-    entranceEase(currentTimeSeconds - word.startSeconds);
+    entranceEase(currentTimeSeconds - word.startSeconds, THIN_ENTRANCE.seconds);
 
   const wordRow = (words: CaptionWord[], key: string) => {
     const visible = words.filter(isVisible);
@@ -120,6 +117,9 @@ export function CaptionRenderer({
         key={key}
         style={{
           margin: 0,
+          // Below the highlight line so it can never cover its descenders (§5.1).
+          position: "relative",
+          zIndex: 0,
           display: "flex",
           flexWrap: "wrap",
           justifyContent: "center",
@@ -132,7 +132,7 @@ export function CaptionRenderer({
       >
         {visible.map((word, i) => {
           const eased = wordEntrance(word);
-          const blurPx = (1 - eased) * ENTRANCE_BLUR_RATIO * baseFontSize;
+          const blurPx = (1 - eased) * THIN_ENTRANCE.blurRatio * baseFontSize;
           return (
             <span
               key={`${key}-${i}`}
@@ -150,31 +150,39 @@ export function CaptionRenderer({
     );
   };
 
-  const popEased = popWord && isVisible(popWord) ? wordEntrance(popWord) : 0;
-  const popFontSize = EMPHASIS_SCALE * baseFontSize;
-  const popBlurPx = (1 - popEased) * ENTRANCE_BLUR_RATIO * popFontSize;
-  const popRisePx = (1 - popEased) * EMPHASIS_RISE_RATIO * popFontSize;
+  const popEased =
+    popWord && isVisible(popWord)
+      ? entranceEase(
+          currentTimeSeconds - popWord.startSeconds,
+          HIGHLIGHT_ENTRANCE.seconds
+        )
+      : 0;
+  const popFontSize = captionFontSize("highlight", style.sizePreset, frameHeight);
+  const popBlurPx = (1 - popEased) * HIGHLIGHT_ENTRANCE.blurRatio * popFontSize;
+  const popRisePx = (1 - popEased) * HIGHLIGHT_ENTRANCE.riseRatio * popFontSize;
   const popOverlapPx = EMPHASIS_OVERLAP_RATIO * popFontSize;
 
-  // §5.3 "3D layer": hard un-blurred copies stepped down-right under the
-  // fill, then the regular soft shadow (scaled to the emphasis size) deepest.
+  // §5.3 depth: crisp un-blurred copies stepped straight DOWN under the fill so
+  // the word reads as raised from the bottom (depth, not a glow), then a soft
+  // shadow scaled to the highlight size deepest.
   const popShadow = [
-    ...Array.from({ length: EMPHASIS_EXTRUDE.steps }, (_, i) => {
+    ...Array.from({ length: HIGHLIGHT_EXTRUDE.steps }, (_, i) => {
       const offset =
-        ((i + 1) / EMPHASIS_EXTRUDE.steps) *
-        EMPHASIS_EXTRUDE.offsetRatio *
+        ((i + 1) / HIGHLIGHT_EXTRUDE.steps) *
+        HIGHLIGHT_EXTRUDE.offsetRatio *
         popFontSize;
-      return `${offset}px ${offset}px 0 ${EMPHASIS_EXTRUDE.color}`;
+      return `0 ${offset}px 0 ${HIGHLIGHT_EXTRUDE.color}`;
     }),
-    `${SHADOW.offsetXRatio * popFontSize}px ${
-      SHADOW.offsetYRatio * popFontSize
-    }px ${SHADOW.blurRatio * popFontSize}px ${SHADOW.color}`,
+    `0 ${HIGHLIGHT_SHADOW.offsetYRatio * popFontSize}px ${
+      HIGHLIGHT_SHADOW.blurRatio * popFontSize
+    }px ${HIGHLIGHT_SHADOW.color}`,
   ].join(", ");
 
   // Backdrop scrim (§5.2): follows the segment's entrance fade so it never
   // pops; anchored to the caption edge, omitted for center position.
   const scrimEase = entranceEase(
-    currentTimeSeconds - segment.startSeconds
+    currentTimeSeconds - segment.startSeconds,
+    THIN_ENTRANCE.seconds
   );
   const scrimEdge: React.CSSProperties | null =
     style.position === "bottom"
@@ -224,19 +232,21 @@ export function CaptionRenderer({
         {popWord && isVisible(popWord) && (
           <p
             style={{
-              // Overlap the neighboring lines and stack above them (§5.1).
+              // Overlap the neighboring lines and stack above them (§5.1); the
+              // raised z-index guarantees the line below never covers it.
               margin: `${-popOverlapPx}px 0`,
               position: "relative",
-              zIndex: 1,
+              zIndex: 2,
               textAlign: "center",
               fontSize: popFontSize,
-              fontStyle: EMPHASIS_ITALIC ? "italic" : "normal",
               color: style.highlightColor,
               opacity: popEased,
               filter: popBlurPx > 0.05 ? `blur(${popBlurPx}px)` : undefined,
               transform:
                 popRisePx > 0.05 ? `translateY(${popRisePx}px)` : undefined,
               ...textBase,
+              fontWeight: CAPTION_ROLES.highlight.weight,
+              fontStyle: CAPTION_ROLES.highlight.italic ? "italic" : "normal",
               textShadow: popShadow,
             }}
           >

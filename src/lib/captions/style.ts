@@ -14,33 +14,74 @@ import type {
  * Isomorphic: no Node built-ins, no DOM, no React.
  */
 
-/** Base font size per preset, as a fraction of frame height (§5.4). */
-export const BASE_FONT_SIZE_BY_PRESET: Record<CaptionSizePreset, number> = {
-  sm: 0.03,
-  md: 0.036,
-  lg: 0.048,
-};
+/**
+ * Caption font stack. All three text roles use Inter (§5.2); the weights are
+ * vendored in public/fonts and registered by src/remotion/load-fonts.ts so the
+ * preview and the server render resolve the exact same fonts (TR-3). Geist and
+ * system sans are metric-fallbacks only.
+ */
+export const CAPTION_FONT_FAMILY =
+  "Inter, var(--font-geist-sans, Geist), sans-serif";
 
-/** Emphasized ("pop") word scale relative to base font size (§5.3). */
-export const EMPHASIS_SCALE = 1.7;
-
-/** Emphasized words render italic (§5.3). */
-export const EMPHASIS_ITALIC = true;
-
-/** Base text fill (§5.2). */
+/** Base (non-highlight) text fill (§5.2). */
 export const BASE_TEXT_COLOR = "#FFFFFF";
 
-/** Font weight for all caption text (§5.2). */
-export const FONT_WEIGHT = 800;
+/**
+ * The three caption text roles (§5.2). Sizes are px measured on a
+ * REFERENCE_FRAME_HEIGHT-tall frame and scale proportionally to the rendered
+ * frame height, so a caption looks identical at any output resolution.
+ *
+ * - `thin`      — normal spoken words (Inter 100, 50px).
+ * - `bold`      — emphasized ALL-CAPS words (Inter 800, 60px). Available in the
+ *                 style system; not auto-assigned by the current selector.
+ * - `highlight` — the one "pop" word per segment (Inter 700 italic, 100px),
+ *                 rendered in the user-selected highlight color.
+ */
+export type CaptionRole = "thin" | "bold" | "highlight";
+
+export interface RoleTypography {
+  weight: number;
+  italic: boolean;
+  uppercase: boolean;
+  /** Font size in px on a REFERENCE_FRAME_HEIGHT-tall frame. */
+  sizePx: number;
+}
+
+/** Frame height (px) the role sizes are authored against (§5.4). */
+export const REFERENCE_FRAME_HEIGHT = 1080;
+
+export const CAPTION_ROLES: Record<CaptionRole, RoleTypography> = {
+  thin: { weight: 100, italic: false, uppercase: false, sizePx: 50 },
+  bold: { weight: 800, italic: false, uppercase: true, sizePx: 60 },
+  highlight: { weight: 700, italic: true, uppercase: false, sizePx: 100 },
+};
 
 /**
- * Caption font stack (§5.2: Montserrat 800). The first family must be
- * available to both the preview and the renderer so layout metrics agree
- * (TR-3); Montserrat and Inter are vendored in public/fonts and registered
- * by src/remotion/load-fonts.ts.
+ * Size-preset multiplier applied to every role (§5.4/§5.6). `md` is the
+ * authored reference; `sm`/`lg` scale all three roles together so the user's
+ * size knob keeps working without changing role proportions.
  */
-export const FONT_FAMILY =
-  "Montserrat, Inter, var(--font-geist-sans, Geist), sans-serif";
+export const SIZE_PRESET_SCALE: Record<CaptionSizePreset, number> = {
+  sm: 0.83,
+  md: 1,
+  lg: 1.33,
+};
+
+/**
+ * Rendered px font size for a role at a preset and frame height. Pure and
+ * resolution-independent: (sizePx / 1080) * presetScale * frameHeight.
+ */
+export function captionFontSize(
+  role: CaptionRole,
+  sizePreset: CaptionSizePreset,
+  frameHeight: number
+): number {
+  return (
+    (CAPTION_ROLES[role].sizePx / REFERENCE_FRAME_HEIGHT) *
+    SIZE_PRESET_SCALE[sizePreset] *
+    frameHeight
+  );
+}
 
 /**
  * No stroke (§5.2): legibility comes from the shadow. Kept as a ratio so a
@@ -50,7 +91,7 @@ export const OUTLINE_RATIO = 0;
 
 export const OUTLINE_COLOR = "#000000";
 
-/** Soft black shadow (§5.2: slight downward offset, gentle blur). */
+/** Soft black shadow for thin/white text (§5.2: slight downward offset). */
 export const SHADOW = {
   color: "rgba(0, 0, 0, 0.7)",
   offsetXRatio: 0, // of font size
@@ -58,26 +99,61 @@ export const SHADOW = {
   blurRatio: 0.15,
 } as const;
 
-/** Word entrance animation (§5.3.1): fade + blur from the word's start time. */
-export const ENTRANCE_SECONDS = 0.18;
-
-/** Starting blur of a word's entrance, as a fraction of font size. */
-export const ENTRANCE_BLUR_RATIO = 0.25;
-
-/** Emphasis word rises from below by this fraction of font size (§5.3.1). */
-export const EMPHASIS_RISE_RATIO = 0.5;
+/**
+ * Thin word entrance (§5.3.1): fade in with a strong initial blur that clears
+ * as it fades. Slower and blurrier than the previous pass so it reads.
+ */
+export const THIN_ENTRANCE = {
+  seconds: 0.45,
+  /** Starting blur, as a fraction of the word's font size. */
+  blurRatio: 0.35,
+} as const;
 
 /**
- * The emphasis line overlaps the lines above and below it by this fraction
- * of the emphasis font size (§5.1) and stacks on top of them.
+ * Highlight word entrance (§5.3.1): slides up from slightly below its baseline
+ * with a gentle fade and only a whisper of blur — elegant, not exaggerated.
  */
-export const EMPHASIS_OVERLAP_RATIO = 0.18;
+export const HIGHLIGHT_ENTRANCE = {
+  seconds: 0.5,
+  /** Rise distance from below the baseline, as a fraction of font size. */
+  riseRatio: 0.28,
+  /** Subtle starting blur, as a fraction of font size. */
+  blurRatio: 0.08,
+} as const;
 
-/** Layered "3D" extrusion behind the emphasis word (§5.3). */
-export const EMPHASIS_EXTRUDE = {
+/**
+ * The highlight line overlaps the lines above and below it by this fraction
+ * of the highlight font size (§5.1) and stacks on top of them. Kept modest so
+ * the highlight's descenders are never clipped by the line beneath.
+ */
+export const EMPHASIS_OVERLAP_RATIO = 0.14;
+
+/**
+ * Depth beneath the highlight word (§5.3): crisp (un-blurred) dark copies
+ * stepped straight down so the word reads as raised from the bottom — depth,
+ * not a glow.
+ */
+export const HIGHLIGHT_EXTRUDE = {
+  color: "rgba(0, 0, 0, 0.8)",
+  /** Total downward offset at the deepest layer, of the highlight font size. */
+  offsetRatio: 0.05,
+  steps: 3,
+} as const;
+
+/** Soft shadow under the highlight word, following its larger size (§5.3). */
+export const HIGHLIGHT_SHADOW = {
+  color: "rgba(0, 0, 0, 0.55)",
+  offsetYRatio: 0.06,
+  blurRatio: 0.05,
+} as const;
+
+/**
+ * Crisp 3D extrusion for BOLD words (§5.2): dark copies stepped straight down,
+ * no blur, so the shadow rises from the bottom toward the middle of the glyph.
+ */
+export const BOLD_EXTRUDE = {
   color: "rgba(0, 0, 0, 0.85)",
-  /** Total down-right offset at the deepest layer, of emphasis font size. */
-  offsetRatio: 0.06,
+  offsetRatio: 0.05,
   steps: 3,
 } as const;
 
@@ -91,15 +167,30 @@ export const MAX_CHARS_PER_LINE = 18;
 /** Maximum base words per line (§5.1). */
 export const MAX_WORDS_PER_LINE = 3;
 
-/** Selectable highlight palette (§5.3). */
+/**
+ * Selectable highlight palette (§5.3/§5.6). The picker offers lime/orange/blue;
+ * green/red remain valid values for backward compatibility.
+ */
 export const HIGHLIGHT_PALETTE = {
-  lime: "#D3DB42",
+  lime: "#F6FF4D",
+  orange: "#FB923C",
+  blue: "#60A5FA",
   green: "#4ADE80",
   red: "#F87171",
-  blue: "#60A5FA",
 } as const;
 
 export type HighlightColorName = keyof typeof HIGHLIGHT_PALETTE;
+
+/** The highlight colors offered in the export color picker, in order (§5.6). */
+export const HIGHLIGHT_CHOICES: ReadonlyArray<{
+  name: HighlightColorName;
+  label: string;
+  value: string;
+}> = [
+  { name: "lime", label: "Lime", value: HIGHLIGHT_PALETTE.lime },
+  { name: "orange", label: "Orange", value: HIGHLIGHT_PALETTE.orange },
+  { name: "blue", label: "Blue", value: HIGHLIGHT_PALETTE.blue },
+];
 
 /** Default user-tunable style (§5.6 defaults). */
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = {

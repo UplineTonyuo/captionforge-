@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# captionforge: staged video uploads
+# captionforge: staged uploads, persisted state, render outputs, temp writes
 .uploads/
+.data/
+.renders/
+*.tmp
 !.env.example

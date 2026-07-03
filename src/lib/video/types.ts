@@ -5,6 +5,8 @@
  * caption/render pipeline that will be built on top of it.
  */
 
+import type { ProbedMedia } from "./probe";
+
 export interface UploadedVideo {
   /** Server-generated identifier for the uploaded video. */
   id: string;
@@ -86,6 +88,49 @@ export interface RenderJob {
   outputPath?: string;
   /** Populated when status is "failed". */
   error?: string;
+}
+
+/**
+ * A persisted project: one uploaded video plus everything derived from it
+ * (transcript, caption segments, style, latest render). This is the durable
+ * unit the editor loads and re-renders (FR-2). Segments and style live here,
+ * not on jobs, so edits are independent of any in-flight render.
+ */
+export interface Project {
+  id: string;
+  title: string;
+  video: UploadedVideo;
+  /** ffprobe metadata captured at upload time. */
+  metadata: ProbedMedia;
+  /** Raw STT output, stored verbatim and never mutated; set once transcribed. */
+  transcript?: Transcript;
+  segments: CaptionSegment[];
+  style: CaptionStyle;
+  latestRender?: { jobId: string; path: string; renderedAt: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type JobKind = "transcription" | "render";
+
+export type JobStatus = "queued" | "running" | "completed" | "failed";
+
+/**
+ * A unit of long-running work against a project. Generalizes the older
+ * per-request RenderJob: a Job references its project by id and carries no
+ * segments/style of its own (those belong to the Project).
+ */
+export interface Job {
+  id: string;
+  kind: JobKind;
+  projectId: string;
+  status: JobStatus;
+  /** 0–100 progress for the current stage. */
+  progress: number;
+  /** Populated when status is "failed". */
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UploadResponse {

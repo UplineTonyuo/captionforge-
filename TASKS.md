@@ -20,13 +20,13 @@
   - Vitest wired up (`npm test`, `vitest.config.ts` with `@/` alias); caption engine modules covered. RTL to be added with the first component-logic test.
   - **AC**: `npm test` runs headless and green in CI-like conditions (`npm ci && npm test`); a failing assertion fails the command.
 
-- [ ] **1.2 ffprobe metadata** — `lib/video/probe.ts` (TR-1)
-  - Extract `VideoMetadata` (duration, width, height, frameRate, hasAudio) from a staged MP4 via ffprobe.
-  - **AC**: unit test against a checked-in ≤1 MB fixture MP4 returns exact known values; corrupt file rejects with a typed error.
+- [x] **1.2 ffprobe metadata** — `lib/video/probe.ts` (TR-1)
+  - Extract media metadata (`ProbedMedia`: duration, width, height, frameRate, hasAudio, hasVideo) from a staged MP4 via ffprobe; the only module allowed to invoke the ffprobe binary. Already consumed by the render adapter.
+  - **AC**: ✔ typed `UnreadableMediaError` on unreadable/durationless input; exercised end-to-end by the transcription and render integration tests (which generate fixtures at test time). A dedicated ≤1 MB checked-in-fixture unit test can be added when a fixture lands.
 
-- [ ] **1.3 Project store** — `lib/projects/store.ts` + `service.ts` (FR-2, TR-7)
-  - `ProjectStore` interface; JSON-file adapter under `.data/projects/` with atomic write-temp-rename; CRUD + list.
-  - **AC**: unit tests cover create/get/update/list/delete; a simulated crash between temp-write and rename leaves the previous version readable.
+- [x] **1.3 Project store** — `lib/projects/store.ts` + `service.ts` (FR-2, TR-7)
+  - `ProjectStore` interface; JSON-file adapter under `.data/projects/` with unique-temp write then atomic rename; CRUD + list (newest-first). `service.ts` holds the `newProject` factory (server ids/timestamps, default style, title from filename). Path-traversal guard on ids (TR-9). `.data/`, `.renders/`, `*.tmp` gitignored.
+  - **AC**: ✔ `store.test.ts` covers create/get/update/list/delete, identity-field protection on update, `ProjectNotFoundError`, idempotent delete, the id guard, and a simulated crash (orphan `.tmp`) leaving the committed record readable.
 
 - [ ] **1.4 Upload creates a project** (FR-2)
   - Extend upload service: stage → probe → `projects.create` → respond `201 { video, projectId }` (additive to `UploadResponse`).

@@ -73,54 +73,48 @@ This is the reference style, matching the attached PrimeClip sample frame. The r
 | Position            | Bottom-center (default), lower third of frame; `top`/`center` as options |
 | Horizontal align    | Centered                                                          |
 | Safe margins        | ≥ 8% of frame height from bottom edge; ≥ 6% of frame width left/right |
-| Block structure     | **Stacked**: the segment's words before the emphasis word wrap above it, the emphasis word sits **alone on its own line**, and the words after it wrap below — see §5.3 |
-| Word reveal         | Words **accumulate as spoken**: a word is visible only from its own start time; already-shown words stay until the segment ends (§5.3.1) |
-| Words per line      | 2–3 base words per line (target ~18 chars/line); never overflow safe area |
+| Block structure     | **Inline**: the segment's words flow in reading order and wrap onto 2–3-word lines; the highlighted (spoken) word stays **in place within the sentence**, distinguished by colour, not by isolation |
+| Word reveal         | The whole segment is present; each word is **dimmed** until its own start time, then reveals in place (§5.3.1) |
+| Words per line      | 2–3 words per line (target ~18 chars/line); never overflow safe area |
 | Wrapping            | Break on word boundaries only; balance line lengths               |
-| Line spacing        | Tight: 1.05 line-height; the highlight line **overlaps** the lines above and below it by ~14% of the highlight font size and **stacks on top of them** (a raised z-index guarantees the line below never covers its descenders) |
+| Line spacing        | Tight: ~1.02 line-height                                          |
 
-### 5.2 Text roles
+### 5.2 Word typography
 
-All caption text is **Inter**. There are exactly three roles; sizes are px on a **1080-px-tall reference frame** and scale proportionally to the rendered frame height (see §5.4), so a caption looks identical at any output resolution.
-
-| Role          | Font / weight / style | Size (px @1080) | Case            | Fill      | Depth |
-| ------------- | --------------------- | --------------- | --------------- | --------- | ----- |
-| **Thin**      | Inter 100             | 50              | As transcribed  | `#FFFFFF` | Soft black shadow: `rgba(0,0,0,0.7)`, offset down ~5% of font size, blur ~15% |
-| **Bold**      | Inter 800             | 60              | **UPPERCASE**   | `#FFFFFF` | Crisp 3D extrude: hard (un-blurred) `rgba(0,0,0,0.85)` copies stepped straight **down** in 3 layers to ~5% of font size — rises from the bottom, not blurry |
-| **Highlight** | Inter 700, **italic** | 100             | As transcribed  | Selectable highlight color (§5.6), default `#F6FF4D` | Vertical depth (below) — see §5.3 |
-
-Non-highlight spoken words render **Thin**. **Bold** is available in the style system for word-level emphasis; it is not auto-assigned by the current selector. The one "pop" word per segment renders **Highlight** (§5.3).
+All caption text is **Inter 800, italic**, one size — the emphasis is **colour + depth, not scale**, so the line never reflows as the highlight moves. Size is px on a **1080-px-tall reference frame** and scales proportionally to the rendered frame height (§5.4), so a caption looks identical at any output resolution.
 
 | Property       | Value                                                          |
 | -------------- | -------------------------------------------------------------- |
-| Stroke/contour | **None** — legibility comes from the shadow                    |
+| Font           | **Inter**, weight **800**, **italic** (Geist / system sans fallback) |
+| Size           | **68px @1080** (scaled by frame height and size preset)        |
+| Case           | As transcribed — never forced uppercase                        |
+| Fill           | Spoken / past words `#FFFFFF`; the currently-spoken word the highlight colour (§5.3); upcoming words white at **35% opacity** (dimmed) |
+| Stroke/contour | **None** — legibility comes from the depth shadow              |
+| 3D depth       | **Per-character**: hard dark copies `rgba(0,0,0,0.9)` stepped **down and to the right** in 4 layers to ~5% × / ~6% ↓ of font size (rising from the bottom toward the mid-right of each glyph), then a soft `rgba(0,0,0,0.55)` shadow offset down ~8%, blur ~5%. Applied to **every** word |
 | Backdrop scrim | While a caption is visible: a full-width black gradient behind the caption edge of the frame, from `rgba(0,0,0,0.45)` at the frame edge fading to transparent over 28% of frame height; follows the caption's entrance fade; flips to the top edge for `position: top`, omitted for `center` |
 
-### 5.3 Highlight word (the "pop" word)
+### 5.3 Highlight (the spoken word)
 
-The currently spoken word — or a word the user manually marks — is the highlight, as in the reference frame where the key word pops below the white line:
+The **currently-spoken word** is the highlight (karaoke) — or a word the user manually marks. There is no separate highlight font or size; only its colour changes.
 
 | Property   | Value                                                             |
 | ---------- | ----------------------------------------------------------------- |
 | Fill color | Highlight color, default `#F6FF4D` (lime); user-selectable (§5.6) |
-| Font       | Inter, weight 700, **italic**, 100px @1080 (§5.2)                 |
-| Case       | Never uppercase                                                  |
-| Placement  | **Always alone on its own line**, stacked between the preceding words (wrapped above) and the following words (wrapped below), painted **on top** |
-| Selection  | Exactly **one word per segment**, fixed for the segment's whole visible duration: a manually emphasized word wins; otherwise the longest word (ties → the later word) |
-| Depth      | Subtle black depth that rises from the bottom (not a glow): hard (un-blurred) `rgba(0,0,0,0.8)` copies stepped straight **down** in 3 layers to ~5% of the highlight font size, then a soft `rgba(0,0,0,0.55)` shadow offset down ~6%, blur ~5% |
+| Selection  | The word whose `[start, end)` contains the current time (moves word-by-word as speech advances); a manually emphasized word is always highlighted |
+| Placement  | **Inline**, in its natural position in the sentence (no isolation, no scaling) |
 
-### 5.3.1 Word entrance animation
+### 5.3.1 Word reveal animation
 
 | Property        | Value                                                        |
 | --------------- | ------------------------------------------------------------ |
-| Reveal          | Each word becomes visible at its own spoken start time; earlier words remain on screen for the rest of the segment |
-| Thin words      | Fade in (opacity 0→1) with a strong blur (35%→0 of font size) that clears as it fades, ~450 ms, cubic ease-out, from the word's own start time |
-| Highlight word  | Slides up from ~28% of font size below its baseline with a gentle fade and a whisper of blur (8%→0), ~500 ms, cubic ease-out — elegant, not exaggerated |
-| Determinism     | Animation is a pure function of `t − word.start` so the browser preview and the server render are frame-identical |
+| Dim state       | Before a word's start time it is present but dimmed (white at 35% opacity) |
+| Reveal          | At its own start time a word **fades in with blur**: opacity 35%→100% and blur ~12%→0 of font size over **~250 ms**, from the word's own start time |
+| Colour          | While a word is being spoken it is the highlight colour; once spoken it is white; upcoming words are dimmed white |
+| Determinism     | Every value is a pure function of `t − word.start` so the browser preview and the server render are frame-identical |
 
 ### 5.4 Size presets
 
-Presets are a multiplier applied to **every** role's px size (§5.2). `md` is the authored reference; the effective size is `(rolePx / 1080) × presetScale × frameHeight`.
+A single caption size, scaled by preset. `md` is the authored reference; the effective size is `(68 / 1080) × presetScale × frameHeight`.
 
 | Preset | Scale | Use                 |
 | ------ | ----- | ------------------- |

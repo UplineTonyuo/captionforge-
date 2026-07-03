@@ -15,51 +15,30 @@ import type {
  */
 
 /**
- * Caption font stack. All three text roles use Inter (§5.2); the weights are
- * vendored in public/fonts and registered by src/remotion/load-fonts.ts so the
- * preview and the server render resolve the exact same fonts (TR-3). Geist and
- * system sans are metric-fallbacks only.
+ * Caption font stack: Inter (800, italic) with Geist/system fallbacks. The
+ * weight is vendored in public/fonts and registered by
+ * src/remotion/load-fonts.ts so the preview Player and the server render
+ * resolve the exact same font (TR-3).
  */
 export const CAPTION_FONT_FAMILY =
   "Inter, var(--font-geist-sans, Geist), sans-serif";
 
-/** Base (non-highlight) text fill (§5.2). */
+/** Every caption word is heavy italic (§5.2). */
+export const CAPTION_FONT_WEIGHT = 800;
+export const CAPTION_ITALIC = true;
+
+/** Fill for spoken/past words (§5.2). */
 export const BASE_TEXT_COLOR = "#FFFFFF";
 
-/**
- * The three caption text roles (§5.2). Sizes are px measured on a
- * REFERENCE_FRAME_HEIGHT-tall frame and scale proportionally to the rendered
- * frame height, so a caption looks identical at any output resolution.
- *
- * - `thin`      — normal spoken words (Inter 100, 50px).
- * - `bold`      — emphasized ALL-CAPS words (Inter 800, 60px). Available in the
- *                 style system; not auto-assigned by the current selector.
- * - `highlight` — the one "pop" word per segment (Inter 700 italic, 100px),
- *                 rendered in the user-selected highlight color.
- */
-export type CaptionRole = "thin" | "bold" | "highlight";
-
-export interface RoleTypography {
-  weight: number;
-  italic: boolean;
-  uppercase: boolean;
-  /** Font size in px on a REFERENCE_FRAME_HEIGHT-tall frame. */
-  sizePx: number;
-}
-
-/** Frame height (px) the role sizes are authored against (§5.4). */
+/** Frame height (px) the caption size is authored against (§5.4). */
 export const REFERENCE_FRAME_HEIGHT = 1080;
 
-export const CAPTION_ROLES: Record<CaptionRole, RoleTypography> = {
-  thin: { weight: 100, italic: false, uppercase: false, sizePx: 50 },
-  bold: { weight: 800, italic: false, uppercase: true, sizePx: 60 },
-  highlight: { weight: 700, italic: true, uppercase: false, sizePx: 100 },
-};
+/** Caption font size in px on a REFERENCE_FRAME_HEIGHT-tall frame (§5.2). */
+export const CAPTION_FONT_PX = 68;
 
 /**
- * Size-preset multiplier applied to every role (§5.4/§5.6). `md` is the
- * authored reference; `sm`/`lg` scale all three roles together so the user's
- * size knob keeps working without changing role proportions.
+ * Size-preset multiplier (§5.4/§5.6). `md` is the authored reference; `sm`/`lg`
+ * scale the caption up or down while keeping the inline layout.
  */
 export const SIZE_PRESET_SCALE: Record<CaptionSizePreset, number> = {
   sm: 0.83,
@@ -68,103 +47,76 @@ export const SIZE_PRESET_SCALE: Record<CaptionSizePreset, number> = {
 };
 
 /**
- * Rendered px font size for a role at a preset and frame height. Pure and
- * resolution-independent: (sizePx / 1080) * presetScale * frameHeight.
+ * Rendered px font size at a preset and frame height. Pure and
+ * resolution-independent: (CAPTION_FONT_PX / 1080) * presetScale * frameHeight.
+ * One size for every word — the emphasis is color + depth, not scale, so the
+ * line never reflows as the active word moves.
  */
 export function captionFontSize(
-  role: CaptionRole,
   sizePreset: CaptionSizePreset,
   frameHeight: number
 ): number {
   return (
-    (CAPTION_ROLES[role].sizePx / REFERENCE_FRAME_HEIGHT) *
+    (CAPTION_FONT_PX / REFERENCE_FRAME_HEIGHT) *
     SIZE_PRESET_SCALE[sizePreset] *
     frameHeight
   );
 }
 
 /**
- * No stroke (§5.2): legibility comes from the shadow. Kept as a ratio so a
- * future style variant can reintroduce it without touching the renderer.
+ * Per-word karaoke reveal (§5.3.1): a word fades in with blur as it is spoken.
+ * Upcoming (not-yet-spoken) words sit dimmed; when a word's time arrives it
+ * pops from `DIM_OPACITY` to full and its blur clears over `seconds`.
  */
-export const OUTLINE_RATIO = 0;
-
-export const OUTLINE_COLOR = "#000000";
-
-/** Soft black shadow for thin/white text (§5.2: slight downward offset). */
-export const SHADOW = {
-  color: "rgba(0, 0, 0, 0.7)",
-  offsetXRatio: 0, // of font size
-  offsetYRatio: 0.05,
-  blurRatio: 0.15,
+export const WORD_REVEAL = {
+  seconds: 0.25,
+  /** Starting blur at the word's own start time, as a fraction of font size. */
+  blurRatio: 0.12,
 } as const;
 
-/**
- * Thin word entrance (§5.3.1): fade in with a strong initial blur that clears
- * as it fades. Slower and blurrier than the previous pass so it reads.
- */
-export const THIN_ENTRANCE = {
-  seconds: 0.45,
-  /** Starting blur, as a fraction of the word's font size. */
-  blurRatio: 0.35,
-} as const;
+/** Opacity of upcoming (not-yet-spoken) words (§5.2). */
+export const DIM_OPACITY = 0.35;
 
 /**
- * Highlight word entrance (§5.3.1): slides up from slightly below its baseline
- * with a gentle fade and only a whisper of blur — elegant, not exaggerated.
+ * Per-character black 3D depth (§5.2): hard dark copies stepped down and to the
+ * right (rising from the bottom toward the mid-right of each glyph), then a
+ * soft shadow deepest. Applied to every word — white and highlighted.
  */
-export const HIGHLIGHT_ENTRANCE = {
-  seconds: 0.5,
-  /** Rise distance from below the baseline, as a fraction of font size. */
-  riseRatio: 0.28,
-  /** Subtle starting blur, as a fraction of font size. */
-  blurRatio: 0.08,
-} as const;
-
-/**
- * The highlight line overlaps the lines above and below it by this fraction
- * of the highlight font size (§5.1) and stacks on top of them. Kept modest so
- * the highlight's descenders are never clipped by the line beneath.
- */
-export const EMPHASIS_OVERLAP_RATIO = 0.14;
-
-/**
- * Depth beneath the highlight word (§5.3): crisp (un-blurred) dark copies
- * stepped straight down so the word reads as raised from the bottom — depth,
- * not a glow.
- */
-export const HIGHLIGHT_EXTRUDE = {
-  color: "rgba(0, 0, 0, 0.8)",
-  /** Total downward offset at the deepest layer, of the highlight font size. */
-  offsetRatio: 0.05,
-  steps: 3,
-} as const;
-
-/** Soft shadow under the highlight word, following its larger size (§5.3). */
-export const HIGHLIGHT_SHADOW = {
-  color: "rgba(0, 0, 0, 0.55)",
+export const WORD_EXTRUDE = {
+  color: "rgba(0, 0, 0, 0.9)",
+  steps: 4,
+  /** Total offsets at the deepest layer, as fractions of font size. */
+  offsetXRatio: 0.05,
   offsetYRatio: 0.06,
+} as const;
+
+export const WORD_SOFT_SHADOW = {
+  color: "rgba(0, 0, 0, 0.55)",
+  offsetYRatio: 0.08,
   blurRatio: 0.05,
 } as const;
 
 /**
- * Crisp 3D extrusion for BOLD words (§5.2): dark copies stepped straight down,
- * no blur, so the shadow rises from the bottom toward the middle of the glyph.
+ * No stroke (§5.2): legibility comes from the shadow. Kept as a ratio so a
+ * future variant can reintroduce it without touching the renderer.
  */
-export const BOLD_EXTRUDE = {
-  color: "rgba(0, 0, 0, 0.85)",
-  offsetRatio: 0.05,
-  steps: 3,
-} as const;
+export const OUTLINE_RATIO = 0;
+export const OUTLINE_COLOR = "#000000";
 
 /** Safe margins as fractions of frame dimensions (§5.1). */
 export const SAFE_MARGIN_BOTTOM = 0.08; // of frame height
 export const SAFE_MARGIN_X = 0.06; // of frame width
 
+/** Word-space between words, as a fraction of font size. */
+export const WORD_GAP_RATIO = 0.28;
+
+/** Line height for the inline wrapped caption (§5.1 "tight"). */
+export const LINE_HEIGHT = 1.02;
+
 /** Target maximum characters per rendered line (§5.1). */
 export const MAX_CHARS_PER_LINE = 18;
 
-/** Maximum base words per line (§5.1). */
+/** Maximum words per line (§5.1). */
 export const MAX_WORDS_PER_LINE = 3;
 
 /**
@@ -201,16 +153,10 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
 
 /**
  * Backdrop scrim (§5.2): dark gradient behind the caption edge of the frame
- * that keeps white text legible on bright footage.
+ * that keeps text legible on bright footage.
  */
 export const SCRIM = {
   maxOpacity: 0.45,
   /** Gradient span, as a fraction of frame height. */
   heightRatio: 0.28,
 } as const;
-
-/** Word-space between words, as a fraction of font size. */
-export const WORD_GAP_RATIO = 0.25;
-
-/** Line height multiplier for caption lines (§5.1 "tight"). */
-export const LINE_HEIGHT = 1.05;

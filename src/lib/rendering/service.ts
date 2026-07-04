@@ -3,6 +3,11 @@ import path from "node:path";
 import { createRenderJob } from "@/lib/video/render";
 import type { CaptionSegment, CaptionStyle, RenderJob } from "@/lib/video/types";
 import { getRemotionBundle } from "./bundle";
+import {
+  developerErrorMessage,
+  formatRenderErrorLog,
+  isDevelopment,
+} from "./diagnostics";
 import { getRender, registerRender, updateRender } from "./registry";
 import { renderCaptionedVideo } from "./renderer";
 
@@ -50,8 +55,11 @@ async function runRender(
   if (!getRender(jobId)) return;
   updateRender(jobId, { status: "rendering", progress: 0 });
 
+  // Captured for diagnostics so the catch can report the bundle path even if
+  // the failure happened after the bundle was built.
+  let serveUrl: string | undefined;
   try {
-    const serveUrl = await getRemotionBundle();
+    serveUrl = await getRemotionBundle();
     await renderCaptionedVideo({
       videoPath: input.videoPath,
       segments: input.segments,
@@ -62,7 +70,11 @@ async function runRender(
     });
     updateRender(jobId, { status: "completed", progress: 100, outputPath });
   } catch (error) {
-    console.error(`[render] job ${jobId} failed:`, error);
+    // Full diagnostics (exact exception, stack, browser/bundle/ffmpeg paths,
+    // render env) to the server terminal.
+    const context = { jobId, bundlePath: serveUrl };
+    console.error(formatRenderErrorLog(error, context));
+
     const message = error instanceof Error ? error.message : "";
     // A missing/unlaunchable browser is the most common export failure; point
     // the user at the fix instead of a generic message.
@@ -72,9 +84,12 @@ async function runRender(
       );
     updateRender(jobId, {
       status: "failed",
-      error: browserRelated
-        ? "Rendering needs Chrome/Chromium. Install Chrome, or set CAPTIONFORGE_BROWSER_EXECUTABLE to its path, then try again."
-        : "Rendering failed. Please try exporting again.",
+      // Developer-friendly, detailed message in dev; generic/actionable in prod.
+      error: isDevelopment()
+        ? developerErrorMessage(error, context)
+        : browserRelated
+          ? "Rendering needs Chrome/Chromium. Install Chrome, or set CAPTIONFORGE_BROWSER_EXECUTABLE to its path, then try again."
+          : "Rendering failed. Please try exporting again.",
     });
   }
 }

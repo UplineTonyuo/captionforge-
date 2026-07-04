@@ -5,6 +5,7 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 
 import { probeMedia } from "@/lib/video/probe";
 import type { CaptionSegment, CaptionStyle } from "@/lib/video/types";
+import { resolveBrowserExecutable } from "./browser";
 
 /**
  * Remotion render adapter: burns the CaptionedVideo composition into an MP4.
@@ -29,21 +30,26 @@ export interface RenderInput {
 const COMPOSITION_ID = "CaptionedVideo";
 
 /**
- * Remotion needs a browser to paint React frames. Configure with
- * CAPTIONFORGE_BROWSER_EXECUTABLE (e.g. a system Chromium); when unset,
- * Remotion downloads its own headless shell on first render. A full Chromium
- * only supports the new headless mode, so a custom executable switches
- * chromeMode to "chrome-for-testing".
+ * Remotion needs a browser to paint React frames. We prefer an explicit
+ * CAPTIONFORGE_BROWSER_EXECUTABLE, then an auto-detected system Chrome/Edge,
+ * and only as a last resort let Remotion download its own headless shell
+ * (which needs network and fails behind firewalls). Resolution logic lives in
+ * ./browser so it is unit tested; here we just log which browser was chosen.
  */
 function browserOptions(): {
   browserExecutable: string | null;
   chromeMode: "headless-shell" | "chrome-for-testing";
 } {
-  const browserExecutable = process.env.CAPTIONFORGE_BROWSER_EXECUTABLE ?? null;
-  return {
-    browserExecutable,
-    chromeMode: browserExecutable ? "chrome-for-testing" : "headless-shell",
-  };
+  const { browserExecutable, chromeMode, source } = resolveBrowserExecutable();
+  if (source === "download") {
+    console.warn(
+      "[render] no CAPTIONFORGE_BROWSER_EXECUTABLE and no system Chrome/Edge " +
+        "found; Remotion will try to download a headless shell (needs network)."
+    );
+  } else {
+    console.info(`[render] using ${source} browser: ${browserExecutable}`);
+  }
+  return { browserExecutable, chromeMode };
 }
 
 export async function renderCaptionedVideo({

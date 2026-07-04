@@ -63,9 +63,18 @@ async function runRender(
     updateRender(jobId, { status: "completed", progress: 100, outputPath });
   } catch (error) {
     console.error(`[render] job ${jobId} failed:`, error);
+    const message = error instanceof Error ? error.message : "";
+    // A missing/unlaunchable browser is the most common export failure; point
+    // the user at the fix instead of a generic message.
+    const browserRelated =
+      /headless shell|chrome|chromium|browser|failed to launch|puppeteer|download/i.test(
+        message
+      );
     updateRender(jobId, {
       status: "failed",
-      error: "Rendering failed. Please try exporting again.",
+      error: browserRelated
+        ? "Rendering needs Chrome/Chromium. Install Chrome, or set CAPTIONFORGE_BROWSER_EXECUTABLE to its path, then try again."
+        : "Rendering failed. Please try exporting again.",
     });
   }
 }

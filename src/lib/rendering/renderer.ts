@@ -10,7 +10,11 @@ import {
 import { probeMedia } from "@/lib/video/probe";
 import type { CaptionSegment, CaptionStyle } from "@/lib/video/types";
 import { resolveBrowserExecutable } from "./browser";
-import { RENDER_MEDIA_OPTIONS } from "./render-config";
+import { formatMemorySnapshot, memorySnapshot } from "./memory";
+import {
+  offthreadVideoCacheSizeInBytes,
+  RENDER_MEDIA_OPTIONS,
+} from "./render-config";
 
 /** Thrown when no usable Chromium can be provisioned for the render. */
 export class BrowserUnavailableError extends Error {
@@ -127,11 +131,21 @@ export async function renderCaptionedVideo({
     // or output): the LAST "[render] phase=..." line before a crash in the
     // server log identifies where the Chromium page died — selectComposition,
     // renderMedia startup, frame rendering, or encoding/muxing.
+    // Cap the OffthreadVideo frame cache so it can't grow to Remotion's default
+    // (half of detected memory) and OOM a small container (see ./render-config).
+    const cacheBytes = offthreadVideoCacheSizeInBytes();
+    console.info(
+      `[render] memory-options offthreadVideoCacheSizeInBytes=${cacheBytes} (${Math.round(
+        cacheBytes / (1024 * 1024)
+      )}MB) concurrency=${RENDER_MEDIA_OPTIONS.concurrency}`
+    );
+
     console.info("[render] phase=select-composition");
     const composition = await selectComposition({
       serveUrl,
       id: COMPOSITION_ID,
       inputProps,
+      offthreadVideoCacheSizeInBytes: cacheBytes,
       ...browser,
     });
 
@@ -156,14 +170,16 @@ export async function renderCaptionedVideo({
       serveUrl,
       outputLocation: outputPath,
       inputProps,
+      offthreadVideoCacheSizeInBytes: cacheBytes,
       ...browser,
       ...RENDER_MEDIA_OPTIONS,
       // Confirms renderMedia startup was reached and reports the concurrency
-      // Remotion actually resolved (should be 1).
+      // Remotion actually resolved (should be 1) + a memory baseline.
       onStart: ({ frameCount, parallelEncoding, resolvedConcurrency }) => {
         console.info(
           `[render] phase=render-start frames=${frameCount} resolvedConcurrency=${resolvedConcurrency} parallelEncoding=${parallelEncoding}`
         );
+        console.info(`[render] memory@start ${formatMemorySnapshot(memorySnapshot())}`);
       },
       // Surface Chromium-side errors (e.g. renderer OOM / WebGL) that precede a
       // page crash. Error-level only; no secrets (composition console output).
@@ -178,7 +194,9 @@ export async function renderCaptionedVideo({
           lastBucket = bucket;
           lastStitch = stitchStage;
           console.info(
-            `[render] phase=${stitchStage} rendered=${renderedFrames} encoded=${encodedFrames} pct=${Math.round(progress * 100)}`
+            `[render] phase=${stitchStage} rendered=${renderedFrames} encoded=${encodedFrames} pct=${Math.round(
+              progress * 100
+            )} ${formatMemorySnapshot(memorySnapshot())}`
           );
         }
         onProgress(Math.round(progress * 100));

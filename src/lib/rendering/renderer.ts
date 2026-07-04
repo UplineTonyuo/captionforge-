@@ -122,6 +122,12 @@ export async function renderCaptionedVideo({
     // Provision + verify the browser before committing to the render, so a
     // missing browser is a fast, precise failure — not a mid-render crash.
     await ensureRenderBrowser(browser);
+
+    // Phase diagnostics (observers only — no effect on rendering, concurrency,
+    // or output): the LAST "[render] phase=..." line before a crash in the
+    // server log identifies where the Chromium page died — selectComposition,
+    // renderMedia startup, frame rendering, or encoding/muxing.
+    console.info("[render] phase=select-composition");
     const composition = await selectComposition({
       serveUrl,
       id: COMPOSITION_ID,
@@ -130,30 +136,55 @@ export async function renderCaptionedVideo({
     });
 
     const fps = media.frameRate ?? composition.fps;
-    // Render one frame/tab at a time to bound peak Chromium memory (Railway
-    // OOM: "Page crashed!" at ~900MB). See ./render-config. Quality settings
-    // (codec/jpegQuality/crf/audioBitrate) are unchanged — visuals identical.
+    const outputWidth = media.width ?? composition.width;
+    const outputHeight = media.height ?? composition.height;
+    const durationInFrames = Math.max(1, Math.round(media.durationSeconds * fps));
     console.info(
-      `[render] renderMedia concurrency=${RENDER_MEDIA_OPTIONS.concurrency}`
+      `[render] phase=composition-selected ${outputWidth}x${outputHeight} fps=${fps} frames=${durationInFrames} concurrency=${RENDER_MEDIA_OPTIONS.concurrency}`
     );
+
+    let lastBucket = -1;
+    let lastStitch = "";
     await renderMedia({
       composition: {
         ...composition,
-        width: media.width ?? composition.width,
-        height: media.height ?? composition.height,
+        width: outputWidth,
+        height: outputHeight,
         fps,
-        durationInFrames: Math.max(
-          1,
-          Math.round(media.durationSeconds * fps)
-        ),
+        durationInFrames,
       },
       serveUrl,
       outputLocation: outputPath,
       inputProps,
       ...browser,
       ...RENDER_MEDIA_OPTIONS,
-      onProgress: ({ progress }) => onProgress(Math.round(progress * 100)),
+      // Confirms renderMedia startup was reached and reports the concurrency
+      // Remotion actually resolved (should be 1).
+      onStart: ({ frameCount, parallelEncoding, resolvedConcurrency }) => {
+        console.info(
+          `[render] phase=render-start frames=${frameCount} resolvedConcurrency=${resolvedConcurrency} parallelEncoding=${parallelEncoding}`
+        );
+      },
+      // Surface Chromium-side errors (e.g. renderer OOM / WebGL) that precede a
+      // page crash. Error-level only; no secrets (composition console output).
+      onBrowserLog: (log) => {
+        if (log.type === "error") {
+          console.error(`[render] chromium-error: ${log.text}`);
+        }
+      },
+      onProgress: ({ progress, renderedFrames, encodedFrames, stitchStage }) => {
+        const bucket = Math.floor(progress * 5); // log ~every 20%
+        if (bucket !== lastBucket || stitchStage !== lastStitch) {
+          lastBucket = bucket;
+          lastStitch = stitchStage;
+          console.info(
+            `[render] phase=${stitchStage} rendered=${renderedFrames} encoded=${encodedFrames} pct=${Math.round(progress * 100)}`
+          );
+        }
+        onProgress(Math.round(progress * 100));
+      },
     });
+    console.info("[render] phase=complete");
   } finally {
     await rm(stagedPath, { force: true });
   }

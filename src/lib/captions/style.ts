@@ -1,6 +1,7 @@
 import type {
   CaptionSizePreset,
   CaptionStyle,
+  CaptionTemplate,
 } from "@/lib/video/types";
 
 /**
@@ -144,11 +145,21 @@ export const HIGHLIGHT_CHOICES: ReadonlyArray<{
   { name: "blue", label: "Blue", value: HIGHLIGHT_PALETTE.blue },
 ];
 
+/** Selectable caption templates, in order, for the export switch (§5.6). */
+export const CAPTION_TEMPLATES: ReadonlyArray<{
+  value: CaptionTemplate;
+  label: string;
+}> = [
+  { value: "karaoke", label: "Karaoke" },
+  { value: "stacked", label: "Stacked" },
+];
+
 /** Default user-tunable style (§5.6 defaults). */
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   position: "bottom",
   highlightColor: HIGHLIGHT_PALETTE.lime,
   sizePreset: "md",
+  template: "karaoke",
 };
 
 /**

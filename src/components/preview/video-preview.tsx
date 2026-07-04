@@ -20,7 +20,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { DEFAULT_CAPTION_STYLE, HIGHLIGHT_CHOICES } from "@/lib/captions/style";
+import {
+  CAPTION_TEMPLATES,
+  DEFAULT_CAPTION_STYLE,
+  HIGHLIGHT_CHOICES,
+} from "@/lib/captions/style";
 import { cn } from "@/lib/utils";
 import {
   ACCEPTED_VIDEO_MIME_TYPES,
@@ -31,6 +35,7 @@ import {
 import type {
   CaptionSegment,
   CaptionStyle,
+  CaptionTemplate,
   RenderStatusResponse,
   TranscribeResponse,
 } from "@/lib/video/types";
@@ -97,11 +102,14 @@ export function VideoPreview() {
   const [highlightColor, setHighlightColor] = React.useState<string>(
     DEFAULT_CAPTION_STYLE.highlightColor
   );
+  const [template, setTemplate] = React.useState<CaptionTemplate>(
+    DEFAULT_CAPTION_STYLE.template ?? "karaoke"
+  );
   // The single style object fed to BOTH the live preview and the export, so
   // the two can never disagree (WYSIWYG parity).
   const captionStyle = React.useMemo<CaptionStyle>(
-    () => ({ ...DEFAULT_CAPTION_STYLE, highlightColor }),
-    [highlightColor]
+    () => ({ ...DEFAULT_CAPTION_STYLE, highlightColor, template }),
+    [highlightColor, template]
   );
   const inputRef = React.useRef<HTMLInputElement>(null);
   const objectUrlRef = React.useRef<string | null>(null);
@@ -478,6 +486,36 @@ export function VideoPreview() {
                 className="space-y-3 rounded-lg border p-4"
                 data-testid="export-panel"
               >
+                <div className="space-y-2" data-testid="caption-style-picker">
+                  <p className="text-sm font-medium">Caption style</p>
+                  <div
+                    className="inline-flex rounded-md border p-0.5"
+                    role="radiogroup"
+                    aria-label="Caption style"
+                  >
+                    {CAPTION_TEMPLATES.map((t) => {
+                      const selected = template === t.value;
+                      return (
+                        <button
+                          key={t.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => setTemplate(t.value)}
+                          className={cn(
+                            "rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            selected
+                              ? "bg-foreground text-background"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="space-y-2" data-testid="highlight-color-picker">
                   <p className="text-sm font-medium">Highlight color</p>
                   <div

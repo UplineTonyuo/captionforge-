@@ -20,6 +20,7 @@ export class InvalidRenderPayloadError extends Error {
 
 const POSITIONS = new Set(["top", "center", "bottom"]);
 const SIZE_PRESETS = new Set(["sm", "md", "lg"]);
+const TEMPLATES = new Set(["karaoke", "stacked"]);
 const HIGHLIGHT_COLORS = new Set<string>(Object.values(HIGHLIGHT_PALETTE));
 
 const MAX_SEGMENTS = 5000;
@@ -98,7 +99,10 @@ export function parseStyle(json: string): CaptionStyle {
     typeof s.highlightColor !== "string" ||
     !HIGHLIGHT_COLORS.has(s.highlightColor) ||
     typeof s.sizePreset !== "string" ||
-    !SIZE_PRESETS.has(s.sizePreset)
+    !SIZE_PRESETS.has(s.sizePreset) ||
+    // template is optional (older clients omit it); reject only bad values.
+    (s.template !== undefined &&
+      (typeof s.template !== "string" || !TEMPLATES.has(s.template)))
   ) {
     throw new InvalidRenderPayloadError("Malformed caption style.");
   }
@@ -106,5 +110,6 @@ export function parseStyle(json: string): CaptionStyle {
     position: s.position,
     highlightColor: s.highlightColor,
     sizePreset: s.sizePreset,
+    template: s.template ?? "karaoke",
   };
 }

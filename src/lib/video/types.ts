@@ -55,6 +55,9 @@ export interface CaptionSegment {
 export type CaptionPosition = "top" | "center" | "bottom";
 export type CaptionSizePreset = "sm" | "md" | "lg";
 
+/** Caption look: inline karaoke (v12 default) or the stacked pop-word style. */
+export type CaptionTemplate = "karaoke" | "stacked";
+
 /**
  * User-tunable caption styling (PROJECT_SPEC.md §5.6). Everything else about
  * the PrimeClip look is fixed by the style system in src/lib/captions/style.ts.
@@ -64,6 +67,8 @@ export interface CaptionStyle {
   /** One of HIGHLIGHT_PALETTE in src/lib/captions/style.ts. */
   highlightColor: string;
   sizePreset: CaptionSizePreset;
+  /** Which caption look to render. Optional for back-compat; defaults to "karaoke". */
+  template?: CaptionTemplate;
 }
 
 export type RenderJobStatus =

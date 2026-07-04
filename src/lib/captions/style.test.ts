@@ -4,6 +4,7 @@ import {
   BASE_TEXT_COLOR,
   CAPTION_FONT_FAMILY,
   CAPTION_FONT_PX,
+  CAPTION_TEMPLATES,
   CAPTION_FONT_WEIGHT,
   CAPTION_ITALIC,
   captionFontSize,
@@ -99,11 +100,19 @@ describe("PrimeClip style constants (PROJECT_SPEC.md §5)", () => {
     ]);
   });
 
-  it("defaults to bottom / lime #F6FF4D / md (§5.6)", () => {
+  it("defaults to bottom / lime #F6FF4D / md / karaoke (§5.6)", () => {
     expect(DEFAULT_CAPTION_STYLE).toEqual({
       position: "bottom",
       highlightColor: "#F6FF4D",
       sizePreset: "md",
+      template: "karaoke",
     });
+  });
+
+  it("offers the karaoke and stacked templates in order (§5.6)", () => {
+    expect(CAPTION_TEMPLATES.map((t) => t.value)).toEqual([
+      "karaoke",
+      "stacked",
+    ]);
   });
 });

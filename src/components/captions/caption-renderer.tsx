@@ -20,6 +20,8 @@ import {
 import { getActiveSegment, isWordEmphasized } from "@/lib/captions/timing";
 import type { CaptionSegment, CaptionStyle } from "@/lib/video/types";
 
+import { StackedCaption } from "./stacked-caption";
+
 /**
  * Renders the PrimeClip caption style (PROJECT_SPEC.md §5) for one point in
  * time, absolutely positioned over a video frame.
@@ -46,7 +48,20 @@ export interface CaptionRendererProps {
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
-export function CaptionRenderer({
+/**
+ * Dispatches to the caption template selected by `style.template`
+ * (default "karaoke"). Both templates render the same composition for the
+ * preview Player and the server export, so preview = render (TR-3).
+ */
+export function CaptionRenderer(props: CaptionRendererProps) {
+  const style = props.style ?? DEFAULT_CAPTION_STYLE;
+  if (style.template === "stacked") {
+    return <StackedCaption {...props} style={style} />;
+  }
+  return <KaraokeCaption {...props} style={style} />;
+}
+
+function KaraokeCaption({
   segments,
   currentTimeSeconds,
   frameWidth,

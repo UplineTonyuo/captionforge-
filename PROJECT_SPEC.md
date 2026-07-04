@@ -136,6 +136,10 @@ Users may change only: position (`top`/`center`/`bottom`), highlight color (fixe
 
 The highlight color picker (shown before export) offers **Lime `#F6FF4D`**, **Orange `#FB923C`**, and **Blue `#60A5FA`**; green `#4ADE80` and red `#F87171` remain valid palette values for backward compatibility. The selected color drives both the live preview and the exported render from the same `CaptionStyle`, so there is no preview/export divergence.
 
+**Caption template.** `CaptionStyle.template` selects the look (optional; defaults to `"karaoke"`):
+- **`karaoke`** — the inline style specified in §5.1–5.3.1: words flow inline, the spoken word lights up, upcoming words dimmed, fade-in-blur reveal.
+- **`stacked`** — an alternative look where normal words render thin (Inter 100) and the one pop word per segment sits **alone on its own line**, larger, in italic Inter 700 and the highlight colour, rising from below. Constants live in `src/lib/captions/stacked-style.ts`; both templates render through the same `CaptionRenderer` dispatcher so preview = export for either.
+
 ## 6. UI/UX guidelines
 
 - **Design system**: Tailwind CSS v4 + shadcn/ui (new-york style, neutral base) as already established in `src/app/globals.css` and `src/components/ui`. New UI uses these primitives; no ad-hoc component libraries.

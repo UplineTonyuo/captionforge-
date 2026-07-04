@@ -1,5 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import {
   AbsoluteFill,
+  cancelRender,
+  continueRender,
+  delayRender,
   OffthreadVideo,
   staticFile,
   useCurrentFrame,
@@ -9,9 +13,34 @@ import {
 import { CaptionRenderer } from "@/components/captions/caption-renderer";
 import { loopTime } from "@/lib/captions/timing";
 import type { CaptionSegment, CaptionStyle } from "@/lib/video/types";
-import { ensureCaptionFontsLoaded } from "./load-fonts";
+import { loadCaptionFonts } from "./load-fonts";
 
-void ensureCaptionFontsLoaded();
+/**
+ * Load the caption fonts inside the composition's render lifecycle: the
+ * delayRender handle is created once during this component's render (useState
+ * initializer) and resolved on a single deterministic path — continueRender on
+ * success, cancelRender with the exact error on failure. No module-scope side
+ * effect, no cached-promise delayRender, and no silent fallback, so the render
+ * either uses the real Inter fonts or fails loudly (never the wrong font).
+ */
+function useCaptionFonts(): void {
+  const [handle] = useState(() => delayRender("Loading caption fonts"));
+  const settled = useRef(false);
+
+  useEffect(() => {
+    loadCaptionFonts()
+      .then(() => {
+        if (settled.current) return;
+        settled.current = true;
+        continueRender(handle);
+      })
+      .catch((error: unknown) => {
+        if (settled.current) return;
+        settled.current = true;
+        cancelRender(error instanceof Error ? error : new Error(String(error)));
+      });
+  }, [handle]);
+}
 
 /**
  * The preview passes blob/http URLs; the server-side render pipeline stages
@@ -52,6 +81,7 @@ export function CaptionedVideo({
   captionStyle,
   loopCaptions = false,
 }: CaptionedVideoProps) {
+  useCaptionFonts();
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
 

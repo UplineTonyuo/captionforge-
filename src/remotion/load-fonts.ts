@@ -1,66 +1,56 @@
-import { continueRender, delayRender, staticFile } from "remotion";
+import { staticFile } from "remotion";
 
 /**
- * Loads the caption fonts (public/fonts/, OFL-licensed) for the server render
- * and the preview. Only the Inter weights the caption styles actually use are
- * loaded (§5.2 karaoke = Inter 800 italic; stacked = Inter 100 + Inter 700
- * italic; bold = Inter 800). Loading from staticFile makes the preview Player
- * and the render resolve the exact same font, which WYSIWYG depends on (TR-3).
+ * Pure caption-font loading for the Remotion composition. Loads only the Inter
+ * weights the caption styles use (§5.2 karaoke = Inter 800 italic; stacked =
+ * Inter 100 + Inter 700 italic; bold = Inter 800). Loading from staticFile makes
+ * the preview Player and the server render resolve the exact same font, which
+ * WYSIWYG parity depends on (PROJECT_SPEC.md TR-3).
  *
- * Robustness: font loading must NEVER fail an export. We hold a single
- * delayRender that is ALWAYS cleared — when the fonts finish, or after a hard
- * cap — and swallow per-font failures (Promise.allSettled). A slow or missing
- * font falls back to system sans instead of hanging delayRender for 28s and
- * killing the render (the earlier failure mode).
+ * This module owns NO render lifecycle: it does not call delayRender and holds
+ * no module-level side effect. The component (captioned-video.tsx) drives the
+ * delayRender/continueRender/cancelRender lifecycle around loadCaptionFonts().
+ *
+ * On any failure this rejects with the exact font filename and underlying
+ * error — there is no silent fallback to system sans, so an export never
+ * completes in the wrong font.
  */
 
-interface CaptionFont {
+export interface CaptionFontSpec {
   family: string;
+  /** Filename under public/fonts. */
   file: string;
   weight: string;
   style: "normal" | "italic";
 }
 
-const CAPTION_FONTS: CaptionFont[] = [
+/** The exact fonts the caption renderer requires. */
+export const CAPTION_FONTS: readonly CaptionFontSpec[] = [
   { family: "Inter", file: "Inter-800.woff2", weight: "800", style: "normal" },
   { family: "Inter", file: "Inter-800-Italic.woff2", weight: "800", style: "italic" },
   { family: "Inter", file: "Inter-100.woff2", weight: "100", style: "normal" },
   { family: "Inter", file: "Inter-700-Italic.woff2", weight: "700", style: "italic" },
 ];
 
-/** Hard cap on how long a render may wait for fonts before proceeding. */
-const FONT_LOAD_CAP_MS = 10_000;
-
-let loaded: Promise<void> | null = null;
-
-async function loadOne(font: CaptionFont): Promise<void> {
-  const face = new FontFace(
-    font.family,
-    `url(${staticFile(`fonts/${font.file}`)}) format("woff2")`,
-    { weight: font.weight, style: font.style }
-  );
-  await face.load();
+async function loadCaptionFont(spec: CaptionFontSpec): Promise<void> {
+  const url = staticFile(`fonts/${spec.file}`);
+  const face = new FontFace(spec.family, `url(${url}) format("woff2")`, {
+    weight: spec.weight,
+    style: spec.style,
+  });
+  try {
+    await face.load();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load caption font ${spec.file} (${url}): ${detail}`);
+  }
   document.fonts.add(face);
 }
 
-export function ensureCaptionFontsLoaded(): Promise<void> {
-  // FontFace only exists in a browser/renderer context; SSR/Node skips.
-  if (typeof document === "undefined" || typeof FontFace === "undefined") {
-    return Promise.resolve();
-  }
-  loaded ??= (async () => {
-    const handle = delayRender("Loading caption fonts", {
-      timeoutInMilliseconds: FONT_LOAD_CAP_MS + 5_000,
-    });
-    try {
-      await Promise.race([
-        Promise.allSettled(CAPTION_FONTS.map(loadOne)),
-        new Promise<void>((resolve) => setTimeout(resolve, FONT_LOAD_CAP_MS)),
-      ]);
-    } finally {
-      // Always continue — a slow/failed font must never block the render.
-      continueRender(handle);
-    }
-  })();
-  return loaded;
+/**
+ * Load every required caption font. Resolves only when all fonts are ready;
+ * rejects with the exact failing filename on the first failure (no fallback).
+ */
+export async function loadCaptionFonts(): Promise<void> {
+  await Promise.all(CAPTION_FONTS.map(loadCaptionFont));
 }

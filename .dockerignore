@@ -1,0 +1,33 @@
+# Never copy host build artifacts or platform-specific installs into the image.
+# node_modules is reinstalled inside the container so the Linux ffmpeg/ffprobe/
+# Remotion compositor binaries are the ones used (critical when building from a
+# Windows/macOS checkout).
+node_modules
+.next
+out
+build
+
+# Generated / staged runtime data
+.uploads
+.data
+.renders
+*.tmp
+
+# VCS and local tooling
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Env files — never bake secrets into the image (set them in Railway)
+.env
+.env.*
+!.env.example
+
+# Misc
+npm-debug.log*
+*.tsbuildinfo
+Dockerfile
+.dockerignore
+README.md

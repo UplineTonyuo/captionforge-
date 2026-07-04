@@ -10,6 +10,7 @@ import {
 import { probeMedia } from "@/lib/video/probe";
 import type { CaptionSegment, CaptionStyle } from "@/lib/video/types";
 import { resolveBrowserExecutable } from "./browser";
+import { RENDER_MEDIA_OPTIONS } from "./render-config";
 
 /** Thrown when no usable Chromium can be provisioned for the render. */
 export class BrowserUnavailableError extends Error {
@@ -129,6 +130,12 @@ export async function renderCaptionedVideo({
     });
 
     const fps = media.frameRate ?? composition.fps;
+    // Render one frame/tab at a time to bound peak Chromium memory (Railway
+    // OOM: "Page crashed!" at ~900MB). See ./render-config. Quality settings
+    // (codec/jpegQuality/crf/audioBitrate) are unchanged — visuals identical.
+    console.info(
+      `[render] renderMedia concurrency=${RENDER_MEDIA_OPTIONS.concurrency}`
+    );
     await renderMedia({
       composition: {
         ...composition,
@@ -141,15 +148,10 @@ export async function renderCaptionedVideo({
         ),
       },
       serveUrl,
-      codec: "h264",
       outputLocation: outputPath,
       inputProps,
       ...browser,
-      // Quality over speed: exports are re-encodes of the user's footage, so
-      // keep the intermediate frames lossless-ish and the encode near-source.
-      jpegQuality: 100,
-      crf: 16,
-      audioBitrate: "320k",
+      ...RENDER_MEDIA_OPTIONS,
       onProgress: ({ progress }) => onProgress(Math.round(progress * 100)),
     });
   } finally {

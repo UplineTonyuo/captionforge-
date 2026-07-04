@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { cloneSegments, editWordText } from "@/lib/captions/edit";
 import {
   CAPTION_TEMPLATES,
   DEFAULT_CAPTION_STYLE,
@@ -105,6 +106,12 @@ export function VideoPreview() {
   const [template, setTemplate] = React.useState<CaptionTemplate>(
     DEFAULT_CAPTION_STYLE.template ?? "karaoke"
   );
+  // The user-editable transcript: the single source of truth for BOTH the live
+  // preview and the export. Seeded from the transcription result, corrected in
+  // place (text only, timestamps preserved), reset back to the original.
+  const [editedSegments, setEditedSegments] = React.useState<
+    CaptionSegment[] | null
+  >(null);
   // The single style object fed to BOTH the live preview and the export, so
   // the two can never disagree (WYSIWYG parity).
   const captionStyle = React.useMemo<CaptionStyle>(
@@ -249,6 +256,7 @@ export function VideoPreview() {
     (file: File) => {
       abortTranscription();
       setCaptions({ phase: "uploading", progress: 0 });
+      setEditedSegments(null);
 
       const xhr = new XMLHttpRequest();
       requestRef.current = xhr;
@@ -277,6 +285,8 @@ export function VideoPreview() {
               xhr.responseText
             ) as TranscribeResponse;
             setCaptions({ phase: "ready", segments, language });
+            // Seed the editable transcript from the transcription result.
+            setEditedSegments(cloneSegments(segments));
           } catch {
             setCaptions({
               phase: "error",
@@ -327,6 +337,7 @@ export function VideoPreview() {
 
       setState({ phase: "loading", file });
       setCaptions({ phase: "none" });
+      setEditedSegments(null);
       setExportState({ phase: "idle" });
       abortTranscription();
       abortExport();
@@ -350,8 +361,25 @@ export function VideoPreview() {
 
   const openPicker = () => inputRef.current?.click();
 
-  const segments =
-    captions.phase === "ready" ? captions.segments : ([] as CaptionSegment[]);
+  /** Correct one word's text; timestamps and every other word are preserved. */
+  const editWord = React.useCallback(
+    (segmentIndex: number, wordIndex: number, text: string) => {
+      setEditedSegments((prev) =>
+        prev ? editWordText(prev, segmentIndex, wordIndex, text) : prev
+      );
+    },
+    []
+  );
+
+  /** Discard all corrections, restoring the original transcription. */
+  const resetTranscript = React.useCallback(() => {
+    setEditedSegments(
+      captions.phase === "ready" ? cloneSegments(captions.segments) : null
+    );
+  }, [captions]);
+
+  // The edited transcript drives BOTH the preview Player and the export.
+  const segments = editedSegments ?? ([] as CaptionSegment[]);
 
   return (
     <Card>
@@ -481,6 +509,51 @@ export function VideoPreview() {
               </div>
             )}
 
+            {captions.phase === "ready" && editedSegments && (
+              <div
+                className="space-y-3 rounded-lg border p-4"
+                data-testid="edit-transcript"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">Edit transcript</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={resetTranscript}
+                  >
+                    Reset to original
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Fix any misheard words. Timing stays the same, and changes
+                  appear instantly in the preview and the exported video.
+                </p>
+                <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {editedSegments.map((segment, si) => (
+                    <div
+                      key={segment.id}
+                      className="flex flex-wrap items-center gap-1.5"
+                    >
+                      {segment.words.map((word, wi) => (
+                        <input
+                          key={`${segment.id}-${wi}`}
+                          value={word.word}
+                          onChange={(event) =>
+                            editWord(si, wi, event.target.value)
+                          }
+                          aria-label={`Edit word ${wi + 1} in segment ${si + 1}`}
+                          className="rounded border bg-background px-1.5 py-0.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          style={{
+                            width: `${Math.max(3, word.word.length + 2)}ch`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {captions.phase === "ready" && (
               <div
                 className="space-y-3 rounded-lg border p-4"
@@ -554,11 +627,7 @@ export function VideoPreview() {
                     </p>
                     <Button
                       onClick={() =>
-                        startExport(
-                          state.video.file,
-                          captions.segments,
-                          captionStyle
-                        )
+                        startExport(state.video.file, segments, captionStyle)
                       }
                     >
                       <Download aria-hidden />
@@ -613,11 +682,7 @@ export function VideoPreview() {
                       variant="outline"
                       size="sm"
                       onClick={() =>
-                        startExport(
-                          state.video.file,
-                          captions.segments,
-                          captionStyle
-                        )
+                        startExport(state.video.file, segments, captionStyle)
                       }
                     >
                       Retry export

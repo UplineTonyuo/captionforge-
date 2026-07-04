@@ -1,11 +1,25 @@
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
-import { renderMedia, selectComposition } from "@remotion/renderer";
+import {
+  ensureBrowser,
+  renderMedia,
+  selectComposition,
+} from "@remotion/renderer";
 
 import { probeMedia } from "@/lib/video/probe";
 import type { CaptionSegment, CaptionStyle } from "@/lib/video/types";
 import { resolveBrowserExecutable } from "./browser";
+
+/** Thrown when no usable Chromium can be provisioned for the render. */
+export class BrowserUnavailableError extends Error {
+  constructor(
+    message = "No Chrome/Chromium browser is available for rendering. Install Chrome, or set CAPTIONFORGE_BROWSER_EXECUTABLE to its path."
+  ) {
+    super(message);
+    this.name = "BrowserUnavailableError";
+  }
+}
 
 /**
  * Remotion render adapter: burns the CaptionedVideo composition into an MP4.
@@ -52,6 +66,29 @@ function browserOptions(): {
   return { browserExecutable, chromeMode };
 }
 
+/**
+ * Explicitly provision the render browser up front, instead of relying on
+ * Remotion's implicit, unmonitored download inside selectComposition/renderMedia.
+ * ensureBrowser validates a configured/detected executable or downloads the
+ * headless shell to Remotion's cache; we then verify the outcome and fail fast
+ * with a precise error if no usable browser could be obtained. This is the
+ * sanctioned Remotion way to guarantee the render's browser dependency.
+ */
+async function ensureRenderBrowser(browser: {
+  browserExecutable: string | null;
+  chromeMode: "headless-shell" | "chrome-for-testing";
+}): Promise<void> {
+  const status = await ensureBrowser({
+    browserExecutable: browser.browserExecutable,
+    chromeMode: browser.chromeMode,
+  });
+  if (status.type === "no-browser") {
+    throw new BrowserUnavailableError();
+  }
+  const at = "path" in status ? ` (${status.path})` : "";
+  console.info(`[render] browser ready: ${status.type}${at}`);
+}
+
 export async function renderCaptionedVideo({
   videoPath,
   segments,
@@ -81,6 +118,9 @@ export async function renderCaptionedVideo({
 
   try {
     const browser = browserOptions();
+    // Provision + verify the browser before committing to the render, so a
+    // missing browser is a fast, precise failure — not a mid-render crash.
+    await ensureRenderBrowser(browser);
     const composition = await selectComposition({
       serveUrl,
       id: COMPOSITION_ID,
